@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Climate Change Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --bg: #f4f7f9;
+      --text: #333;
+      --card: #ffffff;
+      --highlight: #00695c;
+      --summary-bg: #e0f2f1;
+    }
+
+    body.dark {
+      --bg: #121212;
+      --text: #eee;
+      --card: #1e1e1e;
+      --highlight: #26a69a;
+      --summary-bg: #1b2b2a;
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      transition: background 0.3s, color 0.3s;
+    }
+
+    header {
+      background-color: var(--highlight);
+      color: white;
+      padding: 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+
+    .toggle-btn {
+      background: none;
+      border: 2px solid white;
+      color: white;
+      padding: 0.4rem 1rem;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+
+    main {
+      max-width: 1000px;
+      margin: auto;
+      padding: 2rem;
+    }
+
+    section {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    }
+
+    input[type="file"] {
+      margin-top: 1rem;
+      padding: 0.5rem;
+      font-size: 1rem;
+    }
+
+    canvas {
+      margin-top: 1rem;
+      background-color: #fff;
+      border-radius: 10px;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 1rem;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 0.5rem;
+      text-align: center;
+      border: 1px solid #ccc;
+    }
+
+    .summary {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .summary div {
+      flex: 1;
+      background: var(--summary-bg);
+      padding: 0.5rem;
+      border-radius: 6px;
+      color: var(--text);
+    }
+
+    footer {
+      text-align: center;
+      padding: 1rem;
+      background: #eceff1;
+      color: #555;
+      font-size: 0.9rem;
+    }
+
+    .weather-info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 2rem;
+      padding: 1rem;
+      background: var(--card);
+      border-radius: 8px;
+    }
+
+    .weather-info p {
+      margin: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🌍 Climate Change Dashboard</h1>
+    <button class="toggle-btn" onclick="toggleTheme()">Toggle Theme</button>
+  </header>
+
+  <main>
+    <section>
+      <h2>📁 Upload CSV Data</h2>
+      <p>Format: <code>year,temperature,co2</code></p>
+      <input type="file" id="fileInput" accept=".csv" />
+      <div class="summary" id="summary"></div>
+    </section>
+
+    <section>
+      <h2>📈 Temperature Trend</h2>
+      <canvas id="tempChart"></canvas>
+    </section>
+
+    <section>
+      <h2>💨 CO₂ Concentration Trend</h2>
+      <canvas id="co2Chart"></canvas>
+    </section>
+
+    <section>
+      <h2>🔍 CSV Preview</h2>
+      <table id="csvTable">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section class="weather-info" id="weatherInfo">
+      <h2>🌡️ Current Weather in Bengaluru</h2>
+      <p id="cityName">Bengaluru</p>
+      <p id="temp">Temperature: -- °C</p>
+      <p id="humidity">Humidity: -- %</p>
+    </section>
+  </main>
+
+  <footer>
+    &copy; 2025 Climate Insights | Advanced Dashboard
+  </footer>
+
+  <script>
+    function toggleTheme() {
+      document.body.classList.toggle('dark');
+    }
+
+    async function fetchBengaluruWeather() {
+      const apiKey = "48a79aadfa15ea6114cb45496ae56c02"; // OpenWeatherMap API key
+      const lat = 12.9716;
+      const lon = 77.5946;
+
+      try {
+        const res = await fetch(
+          `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${apiKey}`
+        );
+        const data = await res.json();
+
+        document.getElementById("temp").textContent = `Temperature: ${data.main.temp} °C`;
+        document.getElementById("humidity").textContent = `Humidity: ${data.main.humidity} %`;
+      } catch (error) {
+        console.error("Failed to fetch weather data", error);
+      }
+    }
+
+    fetchBengaluruWeather();
+
+    document.getElementById("fileInput").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const text = e.target.result;
+        const data = parseCSV(text);
+        showTable(data.raw);
+        showSummary(data.temps, data.co2s);
+        renderCharts(data);
+      };
+      reader.readAsText(file);
+    });
+
+    function parseCSV(csv) {
+      const lines = csv.trim().split("\n");
+      const headers = lines[0].split(",");
+      const yearIndex = headers.indexOf("year");
+      const tempIndex = headers.indexOf("temperature");
+      const co2Index = headers.indexOf("co2");
+
+      const years = [], temps = [], co2s = [], rawData = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split(",");
+        rawData.push(row);
+        years.push(row[yearIndex]);
+        temps.push(parseFloat(row[tempIndex]));
+        co2s.push(parseFloat(row[co2Index]));
+      }
+
+      return { years, temps, co2s, raw: [headers, ...rawData] };
+    }
+
+    function showTable(data) {
+      const thead = document.querySelector("#csvTable thead");
+      const tbody = document.querySelector("#csvTable tbody");
+      thead.innerHTML = "";
+      tbody.innerHTML = "";
+
+      const headerRow = document.createElement("tr");
+      data[0].forEach(head => {
+        const th = document.createElement("th");
+        th.textContent = head;
+        headerRow.appendChild(th);
+      });
+      thead.appendChild(headerRow);
+
+      for (let i = 1; i < data.length; i++) {
+        const row = document.createElement("tr");
+        data[i].forEach(cell => {
+          const td = document.createElement("td");
+          td.textContent = cell;
+          row.appendChild(td);
+        });
+        tbody.appendChild(row);
+      }
+    }
+
+    function showSummary(temps, co2s) {
+      const avg = arr => (arr.reduce((a, b) => a + b, 0) / arr.length).toFixed(2);
+      const min = arr => Math.min(...arr).toFixed(2);
+      const max = arr => Math.max(...arr).toFixed(2);
+
+      const summary = document.getElementById("summary");
+      summary.innerHTML = `
+        <div>🌡️ Avg Temp: ${avg(temps)} °C</div>
+        <div>📈 Max Temp: ${max(temps)} °C</div>
+        <div>📉 Min Temp: ${min(temps)} °C</div>
+        <div>💨 Avg CO₂: ${avg(co2s)} ppm</div>
+        <div>🔺 Max CO₂: ${max(co2s)} ppm</div>
+        <div>🔻 Min CO₂: ${min(co2s)} ppm</div>
+      `;
+    }
+
+    function renderCharts(data) {
+      new Chart(document.getElementById("tempChart").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: data.years,
+          datasets: [{
+            label: "Global Temperature (°C)",
+            data: data.temps,
+            borderColor: "#ff7043",
+            backgroundColor: "rgba(255,112,67,0.1)",
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: { responsive: true }
+      });
+
+      new Chart(document.getElementById("co2Chart").getContext("2d"), {
+        type: "line",
+        data: {
+          labels: data.years,
+          datasets: [{
+            label: "CO₂ Levels (ppm)",
+            data: data.co2s,
+            borderColor: "#26a69a",
+            backgroundColor: "rgba(38,166,154,0.1)",
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: { responsive: true }
+      });
+    }
+  </script>
+</body>
+</html>
